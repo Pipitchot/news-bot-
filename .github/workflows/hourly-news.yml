@@ -1,0 +1,37 @@
+name: hourly-news
+
+on:
+  schedule:
+    - cron: "0 * * * *"   # ทุกชั่วโมง (เวลา UTC)
+  workflow_dispatch: {}     # กดรันเองได้จากหน้า Actions ตอนทดสอบ
+
+permissions:
+  contents: write            # ให้ commit seen.json กลับได้
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Run news bot
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          CRYPTOPANIC_TOKEN: ${{ secrets.CRYPTOPANIC_TOKEN }}
+          MARKETAUX_TOKEN: ${{ secrets.MARKETAUX_TOKEN }}
+        run: python news_bot.py
+
+      - name: Persist seen log
+        run: |
+          git config user.name "news-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add seen.json || true
+          git commit -m "update seen log [skip ci]" || echo "no changes"
+          git push || echo "nothing to push"

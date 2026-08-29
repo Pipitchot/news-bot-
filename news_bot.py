@@ -1,3 +1,11 @@
+"""
+news_bot.py — Phase 1
+ดึงข่าว AI + Crypto + หุ้น US → กรอง 1 ชม.ล่าสุด → dedupe → สรุปด้วย Claude → ยิงเข้า Slack
+
+รันโดย GitHub Actions ทุกชั่วโมง (ดู .github/workflows/hourly-news.yml)
+ตั้งค่าผ่าน env: ANTHROPIC_API_KEY, SLACK_WEBHOOK_URL, (option) CRYPTOPANIC_TOKEN, MARKETAUX_TOKEN
+"""
+
 import os
 import json
 import time
@@ -57,7 +65,8 @@ SUMMARY_SYSTEM = """คุณคือผู้ช่วยสรุปข่า
 กฎ:
 - โทนเป็นกันเอง อ่านง่าย ไม่ทางการเกิน แต่ไม่มั่วตัวเลข
 - ตัวเลข/ชื่อ/วันที่ ต้องตรงกับข่าวต้นทางเท่านั้น ห้ามเดา
-- ถ้าข่าวไม่มีข้อมูลพอ ให้ขึ้นต้นบรรทัดแรกด้วย "SKIP" แล้วหยุด (อย่าแต่งเติม)
+- โดยปกติสรุปจากหัวข้อข่าวได้เลย แม้เนื้อ teaser จะสั้นหรือไม่มี — ตอบ SKIP เฉพาะกรณีหัวข้อกำกวมจนไม่รู้ว่าข่าวเกี่ยวกับอะไรจริงๆ เท่านั้น
+- ห้ามแต่งตัวเลข/ชื่อ/รายละเอียดที่ไม่มีในต้นทาง ถ้าไม่รู้รายละเอียดให้สรุปกว้างๆ จากหัวข้อแทน
 - disclaimer บังคับทุกครั้ง (เนื้อหาการเงิน)"""
 
 # ────────────────────────────────────────────────────────────
@@ -203,7 +212,11 @@ def summarize(client, item):
             messages=[{"role": "user", "content": raw}],
         )
         text = "".join(b.text for b in resp.content if b.type == "text").strip()
+        if not text:
+            print(f"[summarize] ได้ข้อความว่าง ข้าม: {item['title'][:60]}")
+            return None
         if text.upper().startswith("SKIP"):
+            print(f"[summarize] Claude ตอบ SKIP ข้าม: {item['title'][:60]}")
             return None
         return text
     except Exception as e:

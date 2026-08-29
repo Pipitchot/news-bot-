@@ -233,7 +233,9 @@ def post_slack(webhook, item, summary):
             f"_react ✅ เพื่อ approve ทำคลิป_")
     try:
         r = requests.post(webhook, json={"text": text}, timeout=15)
-        r.raise_for_status()
+        if r.status_code >= 400:
+            print(f"[slack] error: HTTP {r.status_code} - {r.text[:200]}")
+            return False
         return True
     except Exception as e:
         print(f"[slack] error: {e}")
@@ -254,18 +256,21 @@ def main():
     fresh = dedupe(items, seen)[:MAX_ITEMS_PER_RUN]
     print(f"เหลือ {len(fresh)} ข่าวใหม่จริง")
 
-    posted = 0
+    posted = skipped = failed = 0
     for it in fresh:
         summary = summarize(client, it)
         if not summary:
+            skipped += 1
             continue
         if post_slack(webhook, it, summary):
             seen.add(it["_fp"])
             posted += 1
             time.sleep(1)  # เว้นจังหวะ กัน rate limit
+        else:
+            failed += 1
 
     save_seen(seen)
-    print(f"ส่งเข้า Slack แล้ว {posted} ข่าว")
+    print(f"สรุปผล: ส่งสำเร็จ {posted} | ข้าม(สรุปไม่ได้) {skipped} | ส่ง Slack พลาด {failed}")
 
 if __name__ == "__main__":
     main()

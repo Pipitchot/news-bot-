@@ -2,7 +2,7 @@ name: approve-watch
 
 on:
   schedule:
-    - cron: "*/10 * * * *"   # ทุก 10 นาที
+    - cron: "7,17,27,37,47,57 * * * *"   # ทุก ~10 นาที แต่เลี่ยงนาทีแออัด
   workflow_dispatch: {}
 
 jobs:

@@ -2,11 +2,11 @@ name: hourly-news
 
 on:
   schedule:
-    - cron: "0 * * * *"   # ทุกชั่วโมง (เวลา UTC)
-  workflow_dispatch: {}     # กดรันเองได้จากหน้า Actions ตอนทดสอบ
+    - cron: "13,43 * * * *"   # รันนาที :13 กับ :43 ทุกชั่วโมง (เลี่ยงนาที :00 ที่แออัด)
+  workflow_dispatch: {}
 
 permissions:
-  contents: write            # ให้ commit seen.json กลับได้
+  contents: write
 
 jobs:
   run:

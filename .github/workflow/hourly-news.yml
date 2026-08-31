@@ -2,7 +2,7 @@ name: hourly-news
 
 on:
   schedule:
-    - cron: "13,43 * * * *"   # รันนาที :13 กับ :43 ทุกชั่วโมง (เลี่ยงนาที :00 ที่แออัด)
+    - cron: "13,43 * * * *"
   workflow_dispatch: {}
 
 permissions:
@@ -34,4 +34,5 @@ jobs:
           git config user.email "bot@users.noreply.github.com"
           git add seen.json || true
           git commit -m "update seen log [skip ci]" || echo "no changes"
+          git pull --rebase --autostash origin main || true
           git push || echo "nothing to push"

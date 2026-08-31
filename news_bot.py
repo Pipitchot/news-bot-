@@ -38,7 +38,7 @@ RSS_FEEDS = {
     ],
 }
 
-WINDOW_MINUTES = 75          # เก็บข่าวที่เพิ่งออกใน 75 นาทีล่าสุด (เผื่อ buffer จาก 60)
+WINDOW_MINUTES = 180          # เก็บข่าวที่เพิ่งออกใน 180 นาทีล่าสุด (เผื่อ buffer จาก 60)
 MAX_ITEMS_PER_RUN = 8        # กัน Slack ท่วม — สรุปมากสุดกี่ข่าวต่อรอบ
 SEEN_FILE = Path("seen.json")  # log ข่าวที่เคยส่งแล้ว กันส่งซ้ำข้ามชั่วโมง
 MODEL = "claude-sonnet-5"    # เปลี่ยนรุ่นได้ตามต้องการ

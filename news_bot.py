@@ -156,6 +156,7 @@ def fetch_rss():
             except Exception as e:
                 print(f"[rss] error {url}: {e}")
                 continue
+            n_before = len(items)
             for entry in parsed.entries:
                 published = entry.get("published") or entry.get("updated")
                 if not _recent(published, WINDOW_MINUTES):
@@ -167,6 +168,7 @@ def fetch_rss():
                     "summary": (entry.get("summary", "") or "")[:1200],
                     "source": parsed.feed.get("title", url),
                 })
+            print(f"[rss] {category:12} ทั้งหมด {len(parsed.entries):3} | ใหม่ในช่วงเวลา {len(items) - n_before:3} | {url[:70]}")
     return items
  
 def fetch_cryptopanic():
@@ -328,12 +330,16 @@ def main():
     fresh = interleave(dedupe(items, seen))[:MAX_ITEMS_PER_RUN]
     print(f"เหลือ {len(fresh)} ข่าวใหม่จริง")
  
+    from collections import Counter
+    print("ข่าวใหม่แยกหมวด:", dict(Counter(it["category"] for it in fresh)))
+ 
     posted = skipped = failed = 0
     for it in fresh:
         summary = summarize(client, it)
         if not summary:
             skipped += 1
             continue
+        print(f"  ✅ ส่ง [{it['category']}] {it['title'][:70]}")
         if post_slack(webhook, it, summary):
             seen.add(it["_fp"])
             posted += 1
@@ -346,5 +352,6 @@ def main():
  
 if __name__ == "__main__":
     main()
+ 
  
  

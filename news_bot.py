@@ -1,6 +1,6 @@
 """
 news_bot.py — Phase 1
-ดึงข่าว AI + Crypto + หุ้น US → กรอง 1 ชม.ล่าสุด → dedupe → สรุปด้วย Claude → ยิงเข้า Slack
+ดึงข่าว AI + Crypto + หุ้น US + หุ้นไทย → กรอง 1 ชม.ล่าสุด → dedupe → สรุปด้วย Claude → ยิงเข้า Slack
  
 รันโดย GitHub Actions ทุกชั่วโมง (ดู .github/workflows/hourly-news.yml)
 ตั้งค่าผ่าน env: ANTHROPIC_API_KEY, SLACK_WEBHOOK_URL, (option) CRYPTOPANIC_TOKEN, MARKETAUX_TOKEN
@@ -36,10 +36,15 @@ RSS_FEEDS = {
         "https://techcrunch.com/category/artificial-intelligence/feed/",
         "https://venturebeat.com/category/ai/feed/",
     ],
+    "thai_stocks": [
+        "https://www.prachachat.net/finance/feed",  # ประชาชาติธุรกิจ หมวดการเงิน/ตลาดหุ้น
+        # Google News รวมข่าวหุ้นไทยจากหลายสำนัก (กรุงเทพธุรกิจ, ฐานเศรษฐกิจ, ข่าวหุ้น ฯลฯ)
+        "https://news.google.com/rss/search?q=%E0%B8%95%E0%B8%A5%E0%B8%B2%E0%B8%94%E0%B8%AB%E0%B8%B8%E0%B9%89%E0%B8%99%E0%B9%84%E0%B8%97%E0%B8%A2+OR+SET50+OR+%E0%B8%95%E0%B8%A5%E0%B8%97.+OR+%E0%B8%81.%E0%B8%A5.%E0%B8%95.&hl=th&gl=TH&ceid=TH:th",
+    ],
 }
  
 WINDOW_MINUTES = 180          # เก็บข่าวที่เพิ่งออกใน 180 นาทีล่าสุด (เผื่อ buffer จาก 60)
-MAX_ITEMS_PER_RUN = 8        # กัน Slack ท่วม — สรุปมากสุดกี่ข่าวต่อรอบ
+MAX_ITEMS_PER_RUN = 12       # กัน Slack ท่วม — สรุปมากสุดกี่ข่าวต่อรอบ
 SEEN_FILE = Path("seen.json")  # log ข่าวที่เคยส่งแล้ว กันส่งซ้ำข้ามชั่วโมง
 MODEL = "claude-sonnet-5"    # เปลี่ยนรุ่นได้ตามต้องการ
  
@@ -57,10 +62,12 @@ SUMMARY_SYSTEM = """คุณคือบรรณาธิการคัดข
 - ชวนให้ถาม "ทำไม?" หรือ "แล้วไง?" ต่อได้ และตอบได้ด้วยข้อมูลที่หาเพิ่มได้
 - เอาไปเทียบได้ (ไทย vs สหรัฐฯ, ก่อน vs หลัง, บริษัท A vs B, ดัชนี vs ดัชนี)
 - ส่งผลต่อกลุ่มอุตสาหกรรม/หุ้น/สินทรัพย์ที่คนดูถืออยู่หรือสนใจ
+- (หุ้นไทย) นโยบาย ตลท./ก.ล.ต./BOI/คลัง/แบงก์ชาติ, เงินทุนต่างชาติไหลเข้าออก, โครงสร้าง SET/SET50, IPO ที่มีนัย, ดีลใหญ่ที่เปลี่ยนเกมของอุตสาหกรรม
  
 ตอบ SKIP (คำเดียว ไม่ต้องอธิบาย) เมื่อข่าวเป็นแค่:
 - ราคาขึ้น/ลงรายวัน โดยไม่มีเหตุผลเชิงโครงสร้าง
 - งบ/ผลประกอบการที่ออกตามคาด ไม่มีประเด็นใหม่
+- (หุ้นไทย) สรุปปิดตลาดรายวัน, ราคาทองวันนี้, แนะนำหุ้นเด่นรายวัน/เป้าราคาโบรกฯ, ประกาศปันผลตามปกติ, ข่าวผู้บริหารให้สัมภาษณ์ทั่วไป
 - PR เปิดตัวสินค้า ฟีเจอร์ พาร์ทเนอร์ชิปเล็กๆ ตั้งผู้บริหาร จัดอีเวนต์
 - ข่าวลือ คลิกเบต บทความลิสต์ หรือความเห็นส่วนตัวที่ไม่มีข้อมูล
 - ข่าวที่หัวข้อกำกวมจนไม่รู้ว่าเกี่ยวกับอะไร
@@ -86,6 +93,29 @@ SUMMARY_SYSTEM = """คุณคือบรรณาธิการคัดข
  
 [ข้อมูลที่ต้องไปหาเพิ่ม]
 เช็กลิสต์ข้อมูลที่ต้องไปดึงมาประกอบ เช่น "สัดส่วนกลุ่มอุตสาหกรรมใน SET50", "หุ้น 10 อันดับแรกใน S&P 500"
+ 
+[ไอเดียคอนเทนต์ต่อยอด]
+เสนอ 3 ไอเดีย (รูปแบบละ 1 ไอเดีย) ที่ "ใช้ข่าวนี้เป็นจุดเริ่ม" แล้วขยายเป็นเรื่องที่ใหญ่กว่าข่าว
+(แบบเดียวกับการเอาข่าว "BOI to IPO" ไปเขียนเป็น "ทำไมไทยต้องสร้างหุ้น New Economy? เทียบ SET50 กับ S&P 500")
+ทั้ง 3 ไอเดียต้องใช้มุมต่างกัน เช่น เทียบ / อธิบายเบื้องหลัง / มองไปข้างหน้า / จัดอันดับ / เจาะรายบริษัท
+ 
+🎬 คลิปยาว (5–10 นาที) — เจาะลึก เล่าได้หลายชั้น
+   ชื่อ: [คำถามชวนคลิก]
+   มุม: เล่าอะไร ต่างจากข่าวยังไง (1–2 บรรทัด)
+   โครงเรื่อง: 4–6 ช่วง ตั้งแต่ hook จนถึงบทสรุป
+   ข้อมูลที่ต้องใช้: ตัวเลข/ตาราง/กราฟที่ต้องไปหา
+ 
+📱 คลิปสั้น (30–60 วิ) — ประเด็นเดียว คมๆ
+   ชื่อ: [คำถามชวนคลิก]
+   hook 3 วิแรก: [ประโยคเปิด]
+   ประเด็นหลัก: 1 insight ที่ต้องจำได้
+   ข้อมูลที่ต้องใช้: ตัวเลข/ภาพที่ต้องไปหา
+ 
+📝 บทความ — เล่าเป็นลำดับ อ่านจบได้ความเข้าใจ
+   ชื่อ: [คำถามชวนคลิก]
+   มุม: เล่าอะไร ต่างจากข่าวยังไง (1–2 บรรทัด)
+   โครงเรื่อง: 3–5 หัวข้อย่อย
+   ข้อมูลที่ต้องใช้: ตัวเลข/ตาราง/กราฟที่ต้องไปหา
  
 [ความเสี่ยง/ข้อควรระวัง]
 1–2 บรรทัด + ปิดด้วย "ผู้ลงทุนควรทำความเข้าใจลักษณะสินค้า เงื่อนไขผลตอบแทน และความเสี่ยงก่อนตัดสินใจลงทุน"
@@ -210,6 +240,19 @@ def save_seen(seen):
     # เก็บแค่ 500 fingerprint ล่าสุด กันไฟล์บวม
     SEEN_FILE.write_text(json.dumps(list(seen)[-500:]))
  
+def interleave(items):
+    """สลับหมวดกันทีละข่าว (crypto, หุ้น US, AI, หุ้นไทย, ...) ก่อนตัดตาม MAX_ITEMS_PER_RUN
+    กันไม่ให้หมวดที่ดึงมาก่อนกินโควต้าจนหมวดท้ายๆ ไม่ได้ส่ง"""
+    buckets = {}
+    for it in items:
+        buckets.setdefault(it["category"], []).append(it)
+    out = []
+    while any(buckets.values()):
+        for cat in list(buckets):
+            if buckets[cat]:
+                out.append(buckets[cat].pop(0))
+    return out
+ 
 def dedupe(items, seen):
     fresh, batch_fps = [], set()
     for it in items:
@@ -235,7 +278,7 @@ def summarize(client, item):
     try:
         resp = client.messages.create(
             model=MODEL,
-            max_tokens=1500,
+            max_tokens=2500,
             system=SUMMARY_SYSTEM,
             messages=[{"role": "user", "content": raw}],
         )
@@ -256,7 +299,7 @@ def summarize(client, item):
 # ────────────────────────────────────────────────────────────
  
 def post_slack(webhook, item, summary):
-    tag = {"crypto": "🪙 Crypto", "stocks": "📈 หุ้น US", "ai": "🤖 AI"}.get(item["category"], "ข่าว")
+    tag = {"crypto": "🪙 Crypto", "stocks": "📈 หุ้น US", "ai": "🤖 AI", "thai_stocks": "🇹🇭 หุ้นไทย"}.get(item["category"], "ข่าว")
     text = (f"*{tag}*\n{summary}\n\n"
             f"🔗 ที่มา: {item['url']}\n\n"
             f"_react ✅ เพื่อ approve ทำคลิป_")
@@ -282,7 +325,7 @@ def main():
     print(f"ดึงมาได้ {len(items)} ข่าว (ก่อน dedupe)")
  
     seen = load_seen()
-    fresh = dedupe(items, seen)[:MAX_ITEMS_PER_RUN]
+    fresh = interleave(dedupe(items, seen))[:MAX_ITEMS_PER_RUN]
     print(f"เหลือ {len(fresh)} ข่าวใหม่จริง")
  
     posted = skipped = failed = 0
@@ -303,4 +346,5 @@ def main():
  
 if __name__ == "__main__":
     main()
+ 
  
